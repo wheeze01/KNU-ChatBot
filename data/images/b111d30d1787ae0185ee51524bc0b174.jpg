@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>404 Page Not Found</title>
+<link rel="stylesheet" href="https://static.mailplug.com/resources/service/wm60/css/member_integration.css">
+
+<style type="text/css">
+
+body{
+	background-color:#FFF;
+	font-family:'Spoqa Han Sans Neo','Poppins','AppleSDGothic','apple sd gothic neo','noto sans korean','Noto Sans KR','noto sans cjk kr','noto sans cjk','nanum gothic','malgun gothic','dotum',arial,helvetica,'MS Gothic',sans-serif!important;
+	margin:0;
+	height:100%;
+	color: #241E17;
+}
+/* 속성 초기화 */
+p{margin: 0;}
+a{color: inherit;text-decoration: none;}
+button{background: none;border: 0;outline: none;}
+/* ---end */
+
+#mb-auth-bg {
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	align-items: center;
+	height: 100%;
+	padding-top: 0;
+}
+
+/* 웹뷰 */
+@media (max-width: 360px) {
+	.single-wrap img{
+		height:172px;
+	}
+	.single-wrap p{
+		font-size:14px; line-height:22px;
+	}
+}
+</style>
+</head>
+<body>
+	<div id="mb-auth-bg">
+		<div id="container" class="login_wrapper">
+			<div class="gw__single-page">
+				<div class="single-wrap">
+					<img src="https://static.mailplug.com/resources/service/wm60/images/login_CI/img-404.svg" alt="error 404">
+					<div class="notice-wrap">
+						<p class="notice-main">페이지에 접속할 수 없습니다.</p>
+						<div class="notice-sub">
+							<p>접속 주소가 잘못되었거나, 사용할 수 없는 페이지입니다.</p>
+							<p>The address you entered is invalid or unavailable.</p>
+						</div>
+						<div class="btn-wrap" id="btn_div">
+							<a class="btn-back" id="btn_a" href="javascript:history.back();">이전으로 이동</a>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+</body>
+<script>
+if (document.referrer === "" || document.referrer.indexOf(window.location.host) === -1) {
+	var btn_div = document.getElementById("btn_div");
+	btn_div.style.display = "none";
+}
+</script>
+</html>
