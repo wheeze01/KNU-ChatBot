@@ -6,9 +6,9 @@ from datetime import datetime
 app = Flask(__name__)
 
 # CSV 및 이미지 폴더 설정
-CSV_PATH = '../../data/icee_categorized_sample.csv'
+CSV_PATH = '../../data/icee_crawl_with_posted.csv'
 IMAGE_FOLDER = os.path.abspath('../../data/images')
-NGROK_BASE_URL = 'https://72ed-210-110-128-79.ngrok-free.app'
+NGROK_BASE_URL = 'https://a1c8-175-206-174-9.ngrok-free.app'
 
 # CSV 불러오기
 df = pd.read_csv(CSV_PATH)
@@ -22,7 +22,22 @@ def message():
     data = request.get_json()
     utterance = data.get('action', {}).get('params', {}).get('utterance', '').strip()
 
-    # 입력을 'topic, 학과[, 정렬옵션]' 형식으로 분리
+    # 인사말 처리 (채팅방 입장 또는 입력 없음)
+    if not utterance:
+        return jsonify({
+            "version": "2.0",
+            "template": {
+                "outputs": [
+                    {
+                        "simpleText": {
+                            "text": "안녕하세요! 강원대 챗봇에 오신 것을 환영합니다! 😊\n찾고 싶은 정보를 말씀해 주세요!\n예: 공모전, 컴퓨터공학과, 마감순"
+                        }
+                    }
+                ]
+            }
+        })
+
+    # 사용자 입력 처리
     try:
         parts = [s.strip() for s in utterance.split(',')]
         if len(parts) < 2:
@@ -44,14 +59,15 @@ def message():
             }
         })
 
-    if 'department' not in df.columns or 'topic' not in df.columns or 'deadline' not in df.columns:
+    required_columns = {'department', 'topic', 'deadline', 'posted_date'}
+    if not required_columns.issubset(df.columns):
         return jsonify({
             "version": "2.0",
             "template": {
                 "outputs": [
                     {
                         "simpleText": {
-                            "text": "'department', 'topic', 'deadline' 열이 CSV에 존재하는지 확인해주세요."
+                            "text": f"CSV에 {', '.join(required_columns)} 열이 포함되어 있는지 확인해주세요."
                         }
                     }
                 ]
@@ -60,6 +76,7 @@ def message():
 
     today = pd.to_datetime(datetime.today().date())
     df['deadline'] = pd.to_datetime(df['deadline'], errors='coerce')
+    df['posted_date'] = pd.to_datetime(df['posted_date'], errors='coerce')
 
     topic = topic.replace(' ', '').lower()
     department = department.replace(' ', '').lower()
@@ -73,12 +90,16 @@ def message():
         df['deadline'].notna() & (df['deadline'] >= today)
     ]
 
-    if sort_option == '마감순':
-        matches = matches.sort_values(by='deadline', ascending=True)
-    elif sort_option == '최신순':
-        matches = matches.sort_values(by='deadline', ascending=False)
-    elif sort_option == '오래된순':
-        matches = matches.sort_values(by='deadline', ascending=True)
+    sort_map = {
+        '마감순': ('deadline', True),
+        '최신순': ('deadline', False),
+        '오래된순': ('posted_date', True),
+        '게시일순': ('posted_date', False),
+        '게시일오래된순': ('posted_date', True)
+    }
+
+    sort_col, ascending = sort_map.get(sort_option, ('deadline', True))
+    matches = matches.sort_values(by=sort_col, ascending=ascending)
 
     if matches.empty:
         return jsonify({
@@ -99,13 +120,13 @@ def message():
         title = row['title']
         one_line = row['one_line'] if pd.notna(row['one_line']) else '요약 없음'
         deadline = row['deadline'].strftime('%Y-%m-%d') if pd.notna(row['deadline']) else '정보 없음'
-        description = f"마감일: {deadline}\n요약: {one_line}"
+        # = row['posted_date'].strftime('%Y-%m-%d') if pd.notna(row['posted_date']) else '정보 없음'
+        description = f"마감일: {deadline}\n{one_line}"
 
-        
         link = row['link']
         raw_path = row['image']
-        image_url = f"{NGROK_BASE_URL}/images/{os.path.basename(raw_path)}" if pd.notna(raw_path) and raw_path else None
-
+        first_image = raw_path.split(';')[0] if isinstance(raw_path, str) else ''
+        image_url = f"{NGROK_BASE_URL}/images/{os.path.basename(first_image)}" if first_image else None
 
         card = {
             "title": title,

@@ -120,7 +120,7 @@ def message():
         title = row['title']
         one_line = row['one_line'] if pd.notna(row['one_line']) else '요약 없음'
         deadline = row['deadline'].strftime('%Y-%m-%d') if pd.notna(row['deadline']) else '정보 없음'
-        posted = row['posted_date'].strftime('%Y-%m-%d') if pd.notna(row['posted_date']) else '정보 없음'
+        # = row['posted_date'].strftime('%Y-%m-%d') if pd.notna(row['posted_date']) else '정보 없음'
         description = f"마감일: {deadline}\n{one_line}"
 
         link = row['link']
