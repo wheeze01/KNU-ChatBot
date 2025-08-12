@@ -16,12 +16,14 @@ from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.feature_extraction.text import TfidfVectorizer
 from datetime import datetime, timedelta
 from azure.storage.blob import BlobServiceClient
-from azure.core.exceptions import AzureError
+from azure.core.exceptions import AzureError, ResourceNotFoundError  # ★ 추가
 from dotenv import load_dotenv
 
 
 # --- .env 파일 로드 ---
-load_dotenv() # ◀◀ 2. 스크립트 시작 시 .env 파일의 변수를 환경 변수로 로드
+
+load_dotenv(override=True)   # ← 이걸로 기존 환경변수 위에 덮어쓰기
+# ◀◀ 2. 스크립트 시작 시 .env 파일의 변수를 환경 변수로 로드
 # --- 기본 설정 ---
 HEADERS = {"User-Agent": "Mozilla/5.0"}
 # SAVE_FOLDER는 이제 로컬 경로가 아닌, Blob 경로의 기반으로만 사용됩니다.
@@ -201,6 +203,9 @@ def load_existing_data():
     """
     Azure Blob Storage에서 CSV 파일을 다운로드하여 모든 데이터를 
     전역 리스트(pre_existing_data)에 로드합니다.
+    
+    변경: blob_client.exists()를 호출하지 않고, 바로 download_blob()을 시도한 뒤
+          ResourceNotFoundError면 신규로 간주합니다.
     """
     global pre_existing_data, existing_keys_set
     
@@ -211,15 +216,9 @@ def load_existing_data():
 
     try:
         blob_client = blob_service_client.get_blob_client(container=AZURE_CSV_CONTAINER_NAME, blob=CSV_FILE)
-        
-        # Blob이 존재하는지 확인합니다.
-        if not blob_client.exists():
-            print(f"📄 Azure Storage에 '{CSV_FILE}' 파일이 없어 새로 시작합니다.")
-            return
 
         print(f"📄 Azure Storage에서 '{CSV_FILE}' 파일을 다운로드합니다...")
-        
-        # Blob 데이터를 메모리로 다운로드합니다.
+        # exists() 호출 없이 곧장 다운로드 시도
         downloader = blob_client.download_blob()
         blob_bytes = downloader.readall()
         blob_string = blob_bytes.decode("utf-8-sig")
@@ -239,6 +238,9 @@ def load_existing_data():
         }
         print(f"✅ 기존 데이터 {len(pre_existing_data)}건 로드 및 중복 검사용 key {len(existing_keys_set)}개 생성 완료.")
 
+    except ResourceNotFoundError:
+        # 파일이 없으면 신규 시작
+        print(f"📄 Azure Storage에 '{CSV_FILE}' 파일이 없어 새로 시작합니다.")
     except Exception as e:
         print(f"❌ Azure Storage에서 CSV 파일 로드 중 오류 발생: {e}")
 
