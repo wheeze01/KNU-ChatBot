@@ -32,7 +32,7 @@ CSV_FILE = "kangwon_notices.csv"
 # os.makedirs(SAVE_FOLDER, exist_ok=True) # 로컬 저장을 하지 않으므로 제거
 
 # ▼▼▼ 크롤링 시작 날짜 설정 ▼▼▼
-CRAWL_START_DATE = "2025-07-24"
+CRAWL_START_DATE = (datetime.now() - timedelta(days=3)).strftime("%Y-%m-%d")
 # ▲▲▲ 설정 완료 ▲▲▲
 
 # ▼▼▼ Azure Blob Storage 설정 (필수) ▼▼▼
