@@ -32,7 +32,7 @@ CSV_FILE = "kangwon_notices.csv"
 # os.makedirs(SAVE_FOLDER, exist_ok=True) # 로컬 저장을 하지 않으므로 제거
 
 # ▼▼▼ 크롤링 시작 날짜 설정 ▼▼▼
-CRAWL_START_DATE = (datetime.now() - timedelta(days=3)).strftime("%Y-%m-%d")
+CRAWL_START_DATE = (datetime.now() - timedelta(days=14)).strftime("%Y-%m-%d")
 # ▲▲▲ 설정 완료 ▲▲▲
 
 # ▼▼▼ Azure Blob Storage 설정 (필수) ▼▼▼
@@ -445,6 +445,7 @@ def crawl_mainpage(start_date_obj):
         {"name": "행사안내", "bbsNo": "38", "key": "279"},
         {"name": "공모모집", "bbsNo": "345", "key": "1959"},
         {"name": "장학게시판", "bbsNo": "34", "key": "232"},
+        {"name": "취업정보", "bbsNo": "117", "key": "768"},
     ]
 
     for cat in categories:
