@@ -1,7 +1,10 @@
 import numpy as np
 from utils.db_utils import insert_and_return_id, insert_data
 from utils.parsing_utils import parse_image_paths, parse_department
+from utils.log_utils import init_runtime_logger, capture_unhandled_exception
 import pandas as pd
+
+logger = init_runtime_logger()
 
 def clean_row(row):
     raw_deadline = row.get("deadline", "")
@@ -10,7 +13,13 @@ def clean_row(row):
     try:
         department = parse_department(row.get("department", ""))
     except Exception as e:
-        print(f"[DEBUG] parse_department() input={row}, type={type(row)}")
+        capture_unhandled_exception(
+            index=None,
+            phase="INGEST",
+            url=None,
+            exc=e,
+            extra={"row": str(row), "field": "department"}
+        )
         raise
 
     return {
@@ -68,8 +77,17 @@ def insert_notice_all(parsed: dict):
         ocr_text = parsed.get("ocr_text", "").strip()
         if ocr_text:
             insert_notice_ocr_text(notice_id, ocr_text)
-
+        
+        logger.info("[✔] DB 삽입 완료 - title=%s id=%s", parsed.get("title"), notice_id)
         print(f"[✔] DB 삽입 완료 - title: {parsed.get('title')}\n")
     except Exception as e:
-        print(f"[X] DB 삽입 실패 - title: {parsed.get('title')} - error: {e}\n")
+        capture_unhandled_exception(
+            index=None,
+            phase="DB",
+            url=None,
+            exc=e,
+            extra={"title": parsed.get("title")}
+        )
+        logger.error("[X] DB 삽입 실패 - title=%s - error=%s", parsed.get("title"), str(e))
+        print(f"[X] DB 삽입 실패 - title=%s - error=%s", parsed.get("title"), str(e))
         raise

@@ -13,6 +13,12 @@ utils/db_utils.py
 
 from configs.db_config import DB_CONFIG
 import pyodbc
+from utils.log_utils import (
+    init_runtime_logger,
+    capture_unhandled_exception,
+)
+
+logger = init_runtime_logger()
 
 def get_connection():
     """
@@ -28,7 +34,10 @@ def get_connection():
         f"UID={DB_CONFIG['user']};"
         f"PWD={DB_CONFIG['password']}"
     )
-
+        # 연결 시도 로그 (DEBUG 수위)
+    logger.debug("[DB] connecting to %s:%s / db=%s",
+                 DB_CONFIG.get('host'), DB_CONFIG.get('port'), DB_CONFIG.get('database'))
+    
     return pyodbc.connect(conn_str)
 
 def insert_and_return_id(table_name, columns, values):
@@ -44,39 +53,54 @@ def insert_and_return_id(table_name, columns, values):
         - conn: DB에 접속한 연결 객체
         - cursor: DB에 SQL 명령을 전달하고 실행 결과를 다루는 객체
     """
-    
-    conn = None
-    cursor = None
 
     placeholders = ", ".join(["?"] * len(values))
     columns_str = ", ".join(columns)
-    # OUTPUT 절 추가!
     sql = f"""
     INSERT INTO {table_name} ({columns_str})
     OUTPUT INSERTED.id
     VALUES ({placeholders})
     """
 
+    conn = None
+    cursor = None
+
     try:
         conn = get_connection()
         cursor = conn.cursor()
-        
+
+        logger.debug("[DB] SQL: %s | values(len=%d)", sql, len(values))
         cursor.execute(sql, values)
         inserted_id = cursor.fetchone()[0]
-
         conn.commit()
+
         return inserted_id
 
     except Exception as e:
-        print(f"[INSERT+ID ERROR] - {e.__class__.__name__} - {e}\n")
+        capture_unhandled_exception(
+            index=None,
+            phase="DB",
+            url=None,
+            exc=e,
+            extra={"table": table_name, "columns": columns},
+        )
         if conn:
-            conn.rollback()
+            try:
+                conn.rollback()
+            except Exception:
+                logger.exception("[DB] rollback failed")
         raise
     finally:
         if cursor:
-            cursor.close()
+            try:
+                cursor.close()
+            except Exception:
+                logger.exception("[DB] cursor close failed")
         if conn:
-            conn.close()
+            try:
+                conn.close()
+            except Exception:
+                logger.exception("[DB] connection close failed")
 
 def insert_data(table_name, columns, values):
     """
@@ -106,19 +130,38 @@ def insert_data(table_name, columns, values):
     try:
         conn = get_connection() #DB 연결 객체 생성
         cursor = conn.cursor() # 커서(cursor) 객체 생성 (SQL 실행 담당)
+
+        logger.debug("[DB] SQL: %s | values(len=%d)", sql, len(values))
         
         # SQL 실행 (values는 ? 자리표시자에 자동 바인딩)
         cursor.execute(sql, values)
-        
         # DB에 변경 사항 저장 (commit)
         conn.commit()
+
+
     except Exception as e:
-        print(f"[INSERT ERROR] - {e.__class__.__name__} - {e}\n")
+        # 구조화(JSONL) + 런타임 로그 동시 기록
+        capture_unhandled_exception(
+            index=None,
+            phase="DB",
+            url=None,
+            exc=e,
+            extra={"table": table_name, "columns": columns},
+        )
         if conn:
-            conn.rollback() # 오류 발생 시 롤백
+            try:
+                conn.rollback()
+            except Exception:
+                logger.exception("[DB] rollback failed")
         raise
     finally:
         if cursor:
-            cursor.close() # 커서 닫기
+            try:
+                cursor.close()
+            except Exception:
+                logger.exception("[DB] cursor close failed")
         if conn:
-            conn.close() # DB 연결 종료
+            try:
+                conn.close()
+            except Exception:
+                logger.exception("[DB] connection close failed")

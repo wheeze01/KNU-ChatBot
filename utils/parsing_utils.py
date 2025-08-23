@@ -12,6 +12,9 @@ LLM 전처리나 CSV 파싱 시 반복되는 문자열 처리 작업을 효율�
 import pandas as pd
 import ast
 import numpy as np
+from utils.log_utils import init_runtime_logger, capture_unhandled_exception
+
+logger = init_runtime_logger()
 
 def parse_image_paths(image_paths_str) -> list[str]:
     if pd.isna(image_paths_str) or str(image_paths_str).strip().lower() == "nan" or str(image_paths_str).strip() == "":
@@ -40,4 +43,12 @@ def parse_department(row) -> list[str]:
         else:
             return [str(parsed)]
     except Exception as e:
-        raise ValueError(f"[PARSE ERROR] department={row}, error={e}")
+        capture_unhandled_exception(
+            index=None,
+            phase="OTHER",   # 문자열 파싱 단계 → "OTHER" 로 분류
+            url=None,
+            exc=e,
+            extra={"input_value": row}
+        )
+        # 상위 로직이 실패를 감지할 수 있도록 그대로 예외 재발생
+        raise

@@ -3,6 +3,9 @@ from scripts.llm_tasks.api_client import CLIENT, MODEL_ID
 from scripts.llm_tasks.exceptions import LLMCallError, LLMTimeoutError, LLMParseError
 import re
 import json
+from utils.log_utils import init_runtime_logger, capture_unhandled_exception
+
+logger = init_runtime_logger()
 
 def generate_llm_response(title: str, body: str, ocr_text: str) -> dict:
     """
@@ -37,8 +40,12 @@ def generate_llm_response(title: str, body: str, ocr_text: str) -> dict:
         raise LLMCallError(f"[Call Failed] LLM 호출 실패: {e.__class__.__name__} - {e}\n")
 
     # --- 응답 추출 ---
-    raw_text = response.candidates[0].content.parts[0].text.strip()
-    print(f"[LLM RAW RESPONSE]:\n{raw_text}\n")
+    try:
+        raw_text = response.candidates[0].content.parts[0].text.strip()
+    except (AttributeError, IndexError, KeyError) as e:
+        raise LLMCallError(f"[Invalid Response] LLM 결과 형식 오류: {e}")
+
+    logger.debug("[LLM RAW RESPONSE]: %s", raw_text)
         
     # --- 백틱 제거 ---
     if raw_text.startswith("```"):
@@ -50,5 +57,12 @@ def generate_llm_response(title: str, body: str, ocr_text: str) -> dict:
         parsed = json.loads(raw_text)
         parsed.pop("reasoning", None)
         return parsed
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as e:
+        capture_unhandled_exception(
+            index=None,
+            phase="LLM",
+            url=None,
+            exc=e,
+            extra={"raw_text": raw_text[:1000]}  # 앞부분만 남김
+        )
         raise LLMParseError(raw_text)
