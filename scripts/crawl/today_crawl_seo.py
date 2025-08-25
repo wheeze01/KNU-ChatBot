@@ -275,7 +275,7 @@ def add_notice_if_not_duplicate(title, date, content, link, images):
             return True
         return False
 
-    DATE_WINDOW_DAYS = 7
+    DATE_WINDOW_DAYS = 3
     new_key = generate_notice_key(title, date)
     
     try:
