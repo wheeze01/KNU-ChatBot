@@ -1,8 +1,16 @@
+from typing import Optional
 import numpy as np
 from utils.db_utils import insert_and_return_id, insert_data
 from utils.parsing_utils import parse_image_paths, parse_department
+from utils.key_utils import normalize_url, sha256_hex
 from utils.log_utils import init_runtime_logger, capture_unhandled_exception
+from utils.db_utils import get_connection
 import pandas as pd
+from scripts.db_tasks.notice_repo import(
+    upsert_notice_keys, apply_llm_result,
+    add_departments, add_attachments, upsert_ocr_text
+)
+import time
 
 logger = init_runtime_logger()
 
@@ -33,61 +41,93 @@ def clean_row(row):
         "ocr_text": str(row.get("ocr_text", ""))
     }
 
-def insert_notice(parsed):
-    columns = ['title', 'deadline', 'topic', 'oneline', 'url']
-    values = [parsed[col] for col in columns]
-    return insert_and_return_id("notice", columns, values)
+def insert_notice(parsed: dict, conn: Optional = None) -> int:
+    own = False
+    if conn is None:
+        conn = get_connection(); own = True
+    try:
+        title = str(parsed.get("title", "") or "")
+        url   = str(parsed.get("url", "") or "")
+        url_hash = sha256_hex(normalize_url(url))
+        notice_id, _created = upsert_notice_keys(conn, title, url, url_hash)  # 업서트
+        # LLM 결과 반영(완료 마킹)
+        topic   = (parsed.get("topic") or None)
+        oneline = (parsed.get("oneline") or None)
+        deadline= (parsed.get("deadline") or None)
+        apply_llm_result(conn, notice_id, topic, oneline, deadline, new_title=title)
+        return notice_id
+    finally:
+        if own: conn.close()
 
-def insert_notice_department(notice_id, departments):
-    # 배열이나 시리즈가 들어오면 리스트로 강제 변환
-    if not isinstance(departments, list):
-        departments = list(departments)
+def insert_notice_department(notice_id: int, departments, conn: Optional = None):
+    own = False
+    if conn is None:
+        conn = get_connection(); own = True
+    try:
+        if not isinstance(departments, list):
+            departments = list(departments)
+        add_departments(conn, notice_id, departments)
+    finally:
+        if own: conn.close()
 
-    for dept in departments:
-        if isinstance(dept, (list, dict, np.ndarray)):
-            dept = str(dept)  # 이상한 구조 방지
-        dept = str(dept).strip()
-        if dept:  # 빈 문자열 방지
-            insert_data("notice_department", ["notice_id", "department"], [notice_id, dept])
-            
-def insert_notice_attachment(notice_id, image_paths):
-    image_list = parse_image_paths(image_paths)
-    if not image_list:
-        return  # 이미지가 없으면 아무 것도 하지 않음
-    
-    for order, url in enumerate(image_list):
-        insert_data("notice_attachment", ["notice_id", "file_url", "file_order"], [notice_id, url, order])
+def insert_notice_attachment(notice_id: int, image_paths, conn: Optional = None):
+    own = False
+    if conn is None:
+        conn = get_connection(); own = True
+    try:
+        urls = parse_image_paths(image_paths)
+        add_attachments(conn, notice_id, urls)
+    finally:
+        if own: conn.close()
 
-def insert_notice_ocr_text(notice_id, ocr_text):
-    if not ocr_text.strip(): 
-        return  
-    
-    insert_data("notice_ocr_text", ["notice_id", "ocr_text"], [notice_id, ocr_text])
+def insert_notice_ocr_text(notice_id: int, ocr_text: str, conn: Optional = None):
+    text = (ocr_text or "").strip()
+    if not text:
+        return
+    own = False
+    if conn is None:
+        conn = get_connection(); own = True
+    try:
+        upsert_ocr_text(conn, notice_id, text)
+    finally:
+        if own: conn.close()
 
-
-def insert_notice_all(parsed: dict):
+def insert_notice_all(parsed: dict, conn: Optional = None) -> int:
     parsed = clean_row(parsed)
 
+    own = False
+    if conn is None:
+        conn = get_connection()
+        own = True
     try:
-        notice_id = insert_notice(parsed)
-        insert_notice_department(notice_id, parsed['department'])
-        insert_notice_attachment(notice_id, parsed['image_paths'])
+        notice_id = insert_notice(parsed, conn=conn)
 
-        # OCR 텍스트가 존재할 경우에만 삽입
-        ocr_text = parsed.get("ocr_text", "").strip()
+        depts = parsed.get("department", [])
+        if not isinstance(depts, list):
+            try:
+                depts = parse_department(depts)
+            except Exception as e:
+                capture_unhandled_exception(index=None, phase="DB", url=parsed.get("url"),
+                                            exc=e, extra={"field": "department"})
+                depts = []
+        if depts:
+            insert_notice_department(notice_id, depts, conn=conn)
+
+        img_paths = parsed.get("image_paths", "")
+        if img_paths:
+            insert_notice_attachment(notice_id, img_paths, conn=conn)
+
+        ocr_text = (parsed.get("ocr_text") or "").strip()
         if ocr_text:
-            insert_notice_ocr_text(notice_id, ocr_text)
-        
-        logger.info("[✔] DB 삽입 완료 - title=%s id=%s", parsed.get("title"), notice_id)
-        print(f"[✔] DB 삽입 완료 - title: {parsed.get('title')}\n")
-    except Exception as e:
-        capture_unhandled_exception(
-            index=None,
-            phase="DB",
-            url=None,
-            exc=e,
-            extra={"title": parsed.get("title")}
-        )
-        logger.error("[X] DB 삽입 실패 - title=%s - error=%s", parsed.get("title"), str(e))
-        print(f"[X] DB 삽입 실패 - title=%s - error=%s", parsed.get("title"), str(e))
-        raise
+            insert_notice_ocr_text(notice_id, ocr_text, conn=conn)
+
+        return notice_id
+    finally:
+        if own:
+            try:
+                conn.close()
+            except Exception:
+                capture_unhandled_exception(
+                    index=None, phase="DB", url=parsed.get("url"),
+                    exc=RuntimeError("connection close failed"), extra={}
+                )
